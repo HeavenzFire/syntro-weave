@@ -1,0 +1,4 @@
+project_id = "yffuugfshprzedwmqdlt"
+
+[functions.syntropic-engine]
+verify_jwt = false
