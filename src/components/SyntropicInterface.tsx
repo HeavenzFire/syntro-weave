@@ -140,12 +140,31 @@ export default function SyntropicInterface() {
               </div>
             </div>
             
-            <Textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Enter your query... The system measures coherence in real-time."
-              className="min-h-[200px] font-mono"
-            />
+            <div className="relative">
+              <Textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    processInput();
+                  }
+                }}
+                placeholder="Enter your query... The system measures coherence in real-time.&#10;&#10;💡 Tip: Use ⌘/Ctrl + Enter to process"
+                className="min-h-[200px] max-h-[400px] font-mono resize-none transition-all duration-200 focus:ring-2 focus:ring-primary/50 pr-16"
+                disabled={loading}
+                maxLength={5000}
+              />
+              <div className="absolute bottom-3 right-3 flex flex-col items-end gap-1">
+                <div className={`text-xs font-mono px-2 py-1 rounded ${
+                  input.length > 4500 ? 'bg-red-500/20 text-red-500' :
+                  input.length > 4000 ? 'bg-yellow-500/20 text-yellow-500' :
+                  'bg-secondary text-muted-foreground'
+                }`}>
+                  {input.length}/5000
+                </div>
+              </div>
+            </div>
             
             {localCoherence > 0 && (
               <div className="space-y-2">
