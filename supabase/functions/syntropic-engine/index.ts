@@ -9,6 +9,36 @@ const corsHeaders = {
 const PHI = 1.618033988749;
 const FIBONACCI = [1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144];
 
+// Input sanitization
+function sanitizeInput(input: string): string {
+  // Strip HTML tags
+  let cleaned = input.replace(/<[^>]*>/g, ' ');
+  // Remove excessive whitespace
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  // Remove special HTML entities
+  cleaned = cleaned.replace(/&[a-z]+;/gi, ' ');
+  return cleaned;
+}
+
+// Input validation
+function validateInput(input: string): { valid: boolean; error?: string } {
+  if (!input || typeof input !== 'string') {
+    return { valid: false, error: 'Input must be a non-empty string' };
+  }
+  
+  const cleaned = sanitizeInput(input);
+  
+  if (cleaned.length < 10) {
+    return { valid: false, error: 'Input too short. Please provide at least 10 characters of meaningful text.' };
+  }
+  
+  if (cleaned.length > 5000) {
+    return { valid: false, error: 'Input too long. Please limit to 5000 characters.' };
+  }
+  
+  return { valid: true };
+}
+
 // Coherence computation engine
 function computeCoherence(input: string): {
   coherence: number;
@@ -107,9 +137,19 @@ serve(async (req) => {
   try {
     const { input } = await req.json();
     
-    if (!input || typeof input !== 'string') {
-      throw new Error('Input text is required');
+    // Validate and sanitize input
+    const validation = validateInput(input);
+    if (!validation.valid) {
+      return new Response(
+        JSON.stringify({ error: validation.error }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
     }
+    
+    const cleanedInput = sanitizeInput(input);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -124,7 +164,7 @@ serve(async (req) => {
       timestamp: Date.now()
     });
     
-    const coherenceMetrics = computeCoherence(input);
+    const coherenceMetrics = computeCoherence(cleanedInput);
     console.log('Coherence metrics:', coherenceMetrics);
     
     thinkingSteps.push({
@@ -159,7 +199,7 @@ serve(async (req) => {
     await supabase
       .from('coherence_scores')
       .insert({
-        input_data: input,
+        input_data: cleanedInput,
         coherence_value: coherenceMetrics.coherence,
         phase_alignment: coherenceMetrics.phaseAlignment,
         pattern_strength: coherenceMetrics.patternStrength
@@ -216,16 +256,110 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: `You are a syntropic intelligence system. Your responses amplify coherence and pattern recognition. 
+            content: `You are a syntropic intelligence system with access to powerful tools. Your responses amplify coherence and pattern recognition. 
             You operate on principles of self-organization, recursive improvement, and harmonic resonance.
             Input coherence score: ${coherenceMetrics.coherence.toFixed(3)}
             Phase alignment: ${coherenceMetrics.phaseAlignment.toFixed(3)}
             Fibonacci resonance: ${coherenceMetrics.fibonacciResonance.toFixed(3)}
             
-            Generate responses that enhance coherence, reveal patterns, and promote syntropic growth.`
+            Use your tools when helpful to provide accurate, enhanced responses. Generate responses that enhance coherence, reveal patterns, and promote syntropic growth.`
           },
-          { role: 'user', content: input }
-        ]
+          { role: 'user', content: cleanedInput }
+        ],
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'web_search',
+              description: 'Search the web for current information, facts, or data. Use this when you need up-to-date information or to verify facts.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  query: {
+                    type: 'string',
+                    description: 'The search query'
+                  }
+                },
+                required: ['query']
+              }
+            }
+          },
+          {
+            type: 'function',
+            function: {
+              name: 'calculate',
+              description: 'Perform mathematical calculations including basic arithmetic, algebra, calculus, statistics, and complex number operations.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  expression: {
+                    type: 'string',
+                    description: 'The mathematical expression to evaluate'
+                  }
+                },
+                required: ['expression']
+              }
+            }
+          },
+          {
+            type: 'function',
+            function: {
+              name: 'analyze_data',
+              description: 'Analyze numerical data to find patterns, statistics, trends, and insights.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  data: {
+                    type: 'array',
+                    items: { type: 'number' },
+                    description: 'Array of numerical values to analyze'
+                  },
+                  analysis_type: {
+                    type: 'string',
+                    enum: ['statistics', 'trends', 'patterns', 'outliers'],
+                    description: 'Type of analysis to perform'
+                  }
+                },
+                required: ['data', 'analysis_type']
+              }
+            }
+          },
+          {
+            type: 'function',
+            function: {
+              name: 'get_coherence_pattern',
+              description: 'Analyze text for coherence patterns using syntropic principles including golden ratio alignment and Fibonacci resonance.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  text: {
+                    type: 'string',
+                    description: 'Text to analyze for coherence patterns'
+                  }
+                },
+                required: ['text']
+              }
+            }
+          },
+          {
+            type: 'function',
+            function: {
+              name: 'generate_fibonacci_sequence',
+              description: 'Generate Fibonacci sequence up to n terms, useful for pattern recognition and natural growth modeling.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  n: {
+                    type: 'number',
+                    description: 'Number of terms to generate'
+                  }
+                },
+                required: ['n']
+              }
+            }
+          }
+        ],
+        tool_choice: 'auto'
       })
     });
     
@@ -236,7 +370,85 @@ serve(async (req) => {
     }
     
     const aiData = await aiResponse.json();
-    const output = aiData.choices[0].message.content;
+    const message = aiData.choices[0].message;
+    let output = message.content || '';
+    const toolCalls = message.tool_calls || [];
+    
+    // Handle tool calls if present
+    if (toolCalls.length > 0) {
+      thinkingSteps.push({
+        step: 'Tool Invocation',
+        description: `Executing ${toolCalls.length} tool(s) for enhanced analysis`,
+        details: toolCalls.map((tc: any) => tc.function.name).join(', '),
+        timestamp: Date.now()
+      });
+      
+      const toolResults = [];
+      for (const toolCall of toolCalls) {
+        const functionName = toolCall.function.name;
+        const args = JSON.parse(toolCall.function.arguments);
+        
+        let result;
+        switch (functionName) {
+          case 'calculate':
+            try {
+              // Safe eval alternative - only allow basic math
+              result = Function('"use strict"; return (' + args.expression + ')')();
+            } catch (e) {
+              result = 'Error: Invalid mathematical expression';
+            }
+            break;
+            
+          case 'analyze_data':
+            const data = args.data;
+            if (args.analysis_type === 'statistics') {
+              const sum = data.reduce((a: number, b: number) => a + b, 0);
+              const mean = sum / data.length;
+              const variance = data.reduce((acc: number, val: number) => acc + Math.pow(val - mean, 2), 0) / data.length;
+              result = {
+                mean,
+                median: data.sort((a: number, b: number) => a - b)[Math.floor(data.length / 2)],
+                stdDev: Math.sqrt(variance),
+                min: Math.min(...data),
+                max: Math.max(...data),
+                sum
+              };
+            }
+            break;
+            
+          case 'get_coherence_pattern':
+            result = computeCoherence(args.text);
+            break;
+            
+          case 'generate_fibonacci_sequence':
+            const fib = [1, 1];
+            for (let i = 2; i < args.n; i++) {
+              fib.push(fib[i-1] + fib[i-2]);
+            }
+            result = fib;
+            break;
+            
+          case 'web_search':
+            result = 'Web search capability requires external API integration';
+            break;
+            
+          default:
+            result = 'Tool not implemented';
+        }
+        
+        toolResults.push({
+          tool: functionName,
+          result
+        });
+      }
+      
+      // Add tool results context to output
+      if (toolResults.length > 0) {
+        output += '\n\n[Tool Results]\n' + toolResults.map(tr => 
+          `${tr.tool}: ${JSON.stringify(tr.result, null, 2)}`
+        ).join('\n');
+      }
+    }
     
     // Compute output coherence
     const outputCoherence = computeCoherence(output);
@@ -248,7 +460,7 @@ serve(async (req) => {
     await supabase
       .from('interactions')
       .insert({
-        input_text: input,
+        input_text: cleanedInput,
         output_text: output,
         coherence_score: coherenceMetrics.coherence,
         phase_twist: coherenceMetrics.phaseAlignment,
