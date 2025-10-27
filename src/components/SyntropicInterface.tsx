@@ -6,12 +6,14 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { computeLocalCoherence, getCoherenceColor, getCoherenceLabel } from '@/utils/coherenceEngine';
 import { Loader2, Brain, Zap, TrendingUp } from 'lucide-react';
+import ThinkingProcess from './ThinkingProcess';
 
 export default function SyntropicInterface() {
   const [input, setInput] = useState('');
   const [output, setOutput] = useState('');
   const [loading, setLoading] = useState(false);
   const [metrics, setMetrics] = useState<any>(null);
+  const [thinkingSteps, setThinkingSteps] = useState<any[]>([]);
   const [localCoherence, setLocalCoherence] = useState(0);
   const [pathways, setPathways] = useState<any[]>([]);
   const { toast } = useToast();
@@ -74,6 +76,7 @@ export default function SyntropicInterface() {
     setLoading(true);
     setOutput('');
     setMetrics(null);
+    setThinkingSteps([]);
 
     try {
       const { data, error } = await supabase.functions.invoke('syntropic-engine', {
@@ -89,9 +92,11 @@ export default function SyntropicInterface() {
           variant: 'destructive'
         });
         setMetrics(data);
+        setThinkingSteps(data.thinking || []);
       } else {
         setOutput(data.output);
         setMetrics(data.metrics);
+        setThinkingSteps(data.thinking || []);
         toast({
           title: 'Response generated',
           description: `Coherence amplification: ${(data.metrics.amplification * 100).toFixed(1)}%`
@@ -182,6 +187,10 @@ export default function SyntropicInterface() {
               <TrendingUp className="w-5 h-5" />
               Output
             </h2>
+            
+            {thinkingSteps.length > 0 && (
+              <ThinkingProcess steps={thinkingSteps} />
+            )}
             
             {output ? (
               <div className="space-y-4">
